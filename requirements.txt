@@ -1,0 +1,11 @@
+librosa
+numpy
+ipykernel
+matplotlib
+torch
+torchvision
+fastapi
+uvicorn 
+python-multipart 
+streamlit 
+requests
