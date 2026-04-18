@@ -7,18 +7,18 @@ API_URL = "http://127.0.0.1:8000/predict/"
 st.set_page_config(page_title="Voice Gender Recognition", layout="centered")
 
 st.title("🎙️ Voice Gender Recognition System")
-st.markdown("Upload a 3-second audio clip to classify the speaker's gender using a custom PyTorch CNN.")
+st.markdown("Record the audio clip to classify the speaker's gender using a custom PyTorch CNN.")
 
-# File uploader widget
-uploaded_file = st.file_uploader("Upload an audio file (.wav)", type=["wav"])
+#Taking the audio input
+audio_file = st.audio_input("Record your audio")
 
-if uploaded_file is not None:
-    st.audio(uploaded_file, format="audio/wav")
+if audio_file is not None:
+    st.audio(audio_file, format="audio/wav")
     
     if st.button("Predict Gender"):
         with st.spinner("Analyzing audio frequencies..."):
             # Send the file to the FastAPI backend
-            files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "audio/wav")}
+            files = {"file": (audio_file.name, audio_file.getvalue(), "audio/wav")}
             try:
                 response = requests.post(API_URL, files=files)
                 response.raise_for_status()
