@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 # Define the FastAPI backend URL
-API_URL = "http://127.0.0.1:8000/predict/"
+API_URL = "https://gender-detection-using-voice.onrender.com/predict/"
 
 st.set_page_config(page_title="Voice Gender Recognition", layout="centered")
 
