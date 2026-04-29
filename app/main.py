@@ -21,6 +21,12 @@ model.eval()
 def preprocess_audio(audio_bytes):
     """Replicates the librosa preprocessing on live audio data."""
     audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=22050, duration=3.0)
+    
+    #Silence detection(GateKeeper)
+    max_apmlitude = np.max(np.abs(audio))
+    if max_apmlitude < 0.02:
+        return None
+    
     target_length = 22050 * 3
     if len(audio) < target_length:
         audio = np.pad(audio, (0, target_length - len(audio)))
@@ -37,6 +43,13 @@ async def predict_gender(file: UploadFile = File(...)):
     
     # Preprocess and predict
     tensor_X = preprocess_audio(audio_bytes)
+    # handle the silent audio
+    if tensor_X is None:
+        return {
+            "filename":file.filename,
+            "prediction": "Silence Detected",
+            "confidence":0.0
+        }
     with torch.no_grad():
         prediction = model(tensor_X).item()
         
