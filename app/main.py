@@ -15,7 +15,8 @@ app = FastAPI(title="Gender Voice Recognition API")
 
 # Load model weights
 model = GenderCNN()
-model.load_state_dict(torch.load(r"C:\Users\Pradum Gupta\OneDrive\Desktop\Coding\Gender Detection\models\gender_model.pth"))
+model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models', 'gender_model.pth'))
+model.load_state_dict(torch.load(model_path))
 model.eval()
 
 def preprocess_audio(audio_bytes):
