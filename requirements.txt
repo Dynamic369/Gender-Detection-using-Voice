@@ -1,4 +1,4 @@
-fastapi
+
 uvicorn
 python-multipart
 streamlit
@@ -10,3 +10,6 @@ matplotlib
 torch
 torchvision
 matplotlib
+streamlit-webrtc
+av
+soundfile

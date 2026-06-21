@@ -1,5 +1,4 @@
 import os
-# Windows multi-threading fix
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 import torch
@@ -8,19 +7,19 @@ import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader, random_split
 import numpy as np
 import copy
-
-# Ensure the script can find model.py
 import sys
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(PROJECT_ROOT)
 
-from src.model import GenderMLP
+from src.model_cnn2d import GenderCNN2D
 
-def train_model():
+def train_cnn2d():
     PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
     
-    X = np.load(os.path.join(PROCESSED_DATA_DIR, "X.npy"))
-    y = np.load(os.path.join(PROCESSED_DATA_DIR, "y.npy"))
+   
+    X = np.load(os.path.join(PROCESSED_DATA_DIR, "X_2d.npy"))
+    y = np.load(os.path.join(PROCESSED_DATA_DIR, "y_2d.npy"))
     
     tensor_X = torch.Tensor(X)
     tensor_y = torch.Tensor(y).view(-1, 1)
@@ -37,17 +36,17 @@ def train_model():
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
     
-    model = GenderMLP()
+    model = GenderCNN2D()
     criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-3) 
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-3)
     
-    epochs = 40 
-    patience = 5 
+    epochs = 40
+    patience = 5
     patience_counter = 0
     best_val_loss = float('inf')
     best_model_weights = copy.deepcopy(model.state_dict())
     
-    print("Starting robust MLP training on RAVDESS...")
+    print("Starting 2D CNN training on RAVDESS...")
     
     for epoch in range(epochs):
         model.train() 
@@ -91,14 +90,13 @@ def train_model():
             test_correct += (predicted == batch_y).sum().item()
             test_total += batch_y.size(0)
             
-    print(f"\nFinal Test Accuracy: {(test_correct / test_total) * 100:.2f}%")
+    print(f"\nFinal Test Accuracy (2D CNN): {(test_correct / test_total) * 100:.2f}%")
     
     MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    SAVE_PATH = os.path.join(MODELS_DIR, "gender_model.pth")
+    SAVE_PATH = os.path.join(MODELS_DIR, "gender_model_cnn2d.pth") 
     
     torch.save(model.state_dict(), SAVE_PATH)
-    print(f"Model successfully saved to: {SAVE_PATH}")
+    print(f"2D CNN Model saved to: {SAVE_PATH}")
 
 if __name__ == "__main__":
-    train_model()
+    train_cnn2d()

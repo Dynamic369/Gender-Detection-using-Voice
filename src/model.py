@@ -1,32 +1,26 @@
 import torch
 import torch.nn as nn
 
-class GenderCNN(nn.Module):
+class GenderMLP(nn.Module):
     def __init__(self):
-        super(GenderCNN, self).__init__()
-        # Input channel is 1 (grayscale spectrogram)
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
+        super(GenderMLP, self).__init__()
+        
+        # 128 inputs corresponding to the 128 Mel-frequency bands
+        self.fc1 = nn.Linear(128, 64)
+        self.bn1 = nn.BatchNorm1d(64)
         self.relu = nn.ReLU()
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
+        # 50% Dropout forces the model to generalize
+        self.dropout = nn.Dropout(0.5)
         
-        # Adaptive pooling ensures the output is always 10x10, 
-        # preventing shape mismatch errors regardless of exact audio length
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((10, 10))
+        self.fc2 = nn.Linear(64, 32)
+        self.bn2 = nn.BatchNorm1d(32)
         
-        # Fully connected layers for binary classification
-        self.fc1 = nn.Linear(32 * 10 * 10, 128)
-        self.fc2 = nn.Linear(128, 1)
+        self.fc3 = nn.Linear(32, 1)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        x = self.pool(self.relu(self.conv1(x)))
-        x = self.pool(self.relu(self.conv2(x)))
-        x = self.adaptive_pool(x)
-        
-        # Flatten the matrix into a 1D vector for the linear layers
-        x = x.view(x.size(0), -1) 
-        x = self.relu(self.fc1(x))
-        x = self.sigmoid(self.fc2(x))
+        x = self.dropout(self.relu(self.bn1(self.fc1(x))))
+        x = self.dropout(self.relu(self.bn2(self.fc2(x))))
+        x = self.sigmoid(self.fc3(x))
         return x

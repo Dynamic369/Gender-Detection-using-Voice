@@ -1,47 +1,54 @@
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 import streamlit as st
 import torch
 import librosa
-import librosa.display
 import numpy as np
 import matplotlib.pyplot as plt
 import io
 import os
 import sys
+import datetime
 
-# 1. Point Python to your src folder
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-from model import GenderCNN
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(PROJECT_ROOT)
+
+from src.model import GenderMLP
 
 st.set_page_config(page_title="Voice Gender Recognition", layout="centered", page_icon="🎙️")
 
-# 2. Load the model 
+model_path = os.path.join(PROJECT_ROOT, 'models', 'gender_model.pth')
+if os.path.exists(model_path):
+    mod_time = os.path.getmtime(model_path)
+    st.sidebar.success(f"🧠 Robust RAVDESS MLP Loaded:\n{datetime.datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')}")
+
 @st.cache_resource
 def load_model():
-    model = GenderCNN()
-    model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models', 'gender_model.pth'))
-    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+    model = GenderMLP()
+    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True))
     model.eval()
     return model
 
 model = load_model()
 
-# 3. Audio processing logic (Now returns the audio array for plotting)
-def process_and_predict(audio_bytes, threshold):
-    audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=22050, duration=3.0)
+def process_and_predict(audio_bytes):
+    audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=22050)
     
-    # Dynamic Silence Check
-    if np.max(np.abs(audio)) < threshold:
-        return "Silence Detected", 0.0, None, None
+    # 1. Trim silence 
+    audio, _ = librosa.effects.trim(audio, top_db=30)
+    if len(audio) < 100:
+        return "Error", 0.0, 0.0, audio, sr
         
-    target_length = 22050 * 3
-    if len(audio) < target_length:
-        audio = np.pad(audio, (0, target_length - len(audio)))
-        
-    mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=40)
-    mfccs = mfccs[np.newaxis, np.newaxis, ...] 
-    tensor_X = torch.Tensor(mfccs)
+    # 2. Extract Mel and Average
+    mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=128, fmax=8000)
+    mel_mean = np.mean(mel_spec, axis=1)
     
-    tensor_X = (tensor_X - tensor_X.mean()) / (tensor_X.std() + 1e-8)
+    # 3. Peak Normalization [0.0 to 1.0]
+    mel_db = librosa.power_to_db(mel_mean, ref=np.max)
+    mel_normalized = (mel_db + 80.0) / 80.0 
+    
+    # Shape for PyTorch (1 Batch, 128 Features)
+    tensor_X = torch.Tensor(mel_normalized).unsqueeze(0)
     
     with torch.no_grad():
         prediction = model(tensor_X).item()
@@ -49,65 +56,55 @@ def process_and_predict(audio_bytes, threshold):
     label = "Female" if prediction >= 0.5 else "Male"
     confidence = prediction if prediction >= 0.5 else (1 - prediction)
     
-    # We now return the raw audio and sample rate so we can plot them!
-    return label, round(confidence * 100, 2), audio, sr
+    return label, round(confidence * 100, 2), prediction, audio, sr
 
-# 4. NEW: Visualization Engine
-def plot_audio_features(audio, sr):
-    # Create a figure with two subplots stacked vertically
-    fig, ax = plt.subplots(nrows=2, ncols=1, figsize=(10, 6))
-    
-    # Top Plot: The raw waveform
-    librosa.display.waveshow(audio, sr=sr, ax=ax[0], color='cyan')
-    ax[0].set_title('Raw Audio Waveform (Time Domain)')
-    ax[0].set_ylabel('Amplitude')
-    
-    # Bottom Plot: The Mel-Spectrogram
-    # We calculate a high-res spectrogram specifically for the user to look at
-    S = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=128, fmax=8000)
-    S_dB = librosa.power_to_db(S, ref=np.max)
-    img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=8000, ax=ax[1], cmap='magma')
-    fig.colorbar(img, ax=ax[1], format='%+2.0f dB')
-    ax[1].set_title('Mel-Spectrogram (Frequency Domain - CNN Input)')
-    
+def plot_audio_features(mel_normalized):
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(mel_normalized, color='cyan')
+    ax.fill_between(range(len(mel_normalized)), mel_normalized, alpha=0.3, color='cyan')
+    ax.set_title('1D Peak-Normalized Frequency Profile (Neural Network Input)')
+    ax.set_xlabel('Mel Frequency Bins (Low Pitch -> High Pitch)')
+    ax.set_ylabel('Normalized Amplitude [0.0 - 1.0]')
+    ax.set_ylim(0, 1.1)
     fig.tight_layout()
     return fig
 
-# 5. The User Interface
 st.title("🎙️ Voice Gender Recognition System")
-st.markdown("Record an audio clip to classify the speaker's gender and visualize the signal processing.")
+# tab1, tab2 = st.tabs(["🎙️ Record Audio", "📁 Upload File"])
+audio_file = None
 
-with st.expander("⚙️ Advanced Settings (Microphone Calibration)"):
-    st.write("Adjust this if background noise is triggering false predictions.")
-    user_threshold = st.slider("Silence Threshold", min_value=0.01, max_value=0.15, value=0.02, step=0.01)
+# with tab1:
+#     recorded_audio = st.audio_input("Record your voice")
+#     if recorded_audio is not None:
+#         audio_file = recorded_audio
 
-audio_file = st.audio_input("Record your audio")
+# with tab2:
+uploaded_audio = st.file_uploader("Upload an audio file", type=["wav", "mp3", "m4a", "ogg"])
+if uploaded_audio is not None:
+    audio_file = uploaded_audio
 
 if audio_file is not None:
-    st.audio(audio_file, format="audio/wav")
+    st.audio(audio_file)
     
     if st.button("Predict Gender & Analyze Signal"):
-        with st.spinner("Analyzing audio frequencies and rendering graphs..."):
-            
+        with st.spinner("Extracting biological pitch..."):
             audio_bytes = audio_file.getvalue()
+            label, confidence, raw_pred, audio_data, sr = process_and_predict(audio_bytes)
             
-            # Catch all 4 variables returned by the updated function
-            label, confidence, audio_data, sr = process_and_predict(audio_bytes, threshold=user_threshold)
-            
-            if label == "Silence Detected":
-                st.warning(f"Peak amplitude was below the {user_threshold} threshold. Please speak clearly or lower the threshold.")
+            if label == "Error":
+                st.error("Audio too quiet or too short. Please speak louder.")
             else:
                 st.success("Analysis Complete!")
-                
-                # Create a nice 2-column layout for the metrics
-                col1, col2 = st.columns(2)
-                col1.metric(label="Predicted Gender", value=label)
-                col2.metric(label="Confidence", value=f"{confidence}%")
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Predicted Gender", label)
+                col2.metric("Confidence", f"{confidence}%")
+                col3.metric("Raw Output", f"{raw_pred:.4f}")
                 
                 st.divider()
-                st.markdown("Mathematical Signal Analysis")
-                st.write("These are the exact frequency patterns extracted from your voice and fed into the Convolutional Neural Network.")
                 
-                # Render the plots!
-                fig = plot_audio_features(audio_data, sr)
+                mel = librosa.feature.melspectrogram(y=audio_data, sr=sr, n_mels=128, fmax=8000)
+                mel_db = librosa.power_to_db(np.mean(mel, axis=1), ref=np.max)
+                mel_norm = (mel_db + 80.0) / 80.0
+                
+                fig = plot_audio_features(mel_norm)
                 st.pyplot(fig)
